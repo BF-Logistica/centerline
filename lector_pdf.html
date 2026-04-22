@@ -109,7 +109,7 @@
     </div>
 
     <script>
-        // La URL de tu Apps Script actual
+        // SOLAMENTE la URL de Apps Script
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-G5jwAL4Q8yHvDDQvqjH1EH3b9KHkx14V16PB8L7qDRZUVbyWTpOctm4IQfNTPiRc/exec';
         let fileName = "";
 
@@ -208,6 +208,7 @@
                     document.getElementById('btnConsultar').innerText = "2. Enviar a Excel";
                 }
             }
+        } // <--- ESTA ES LA LLAVE QUE FALTABA
 
         function mostrarStatus(m, b, c) {
             const s = document.getElementById('status');
