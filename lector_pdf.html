@@ -119,7 +119,7 @@
         </div>
     </div>
 
-    <script>
+   <script>
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-G5jwAL4Q8yHvDDQvqjH1EH3b9KHkx14V16PB8L7qDRZUVbyWTpOctm4IQfNTPiRc/exec';
         let fileName = "";
 
@@ -134,10 +134,14 @@
             reader.readAsDataURL(input.files[0]);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
+                
+                // CORRECCIÓN 1: Agregamos el header text/plain
                 const res = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
                     body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 })
                 });
+                
                 const data = await res.json();
                 if (data.status === "procesando") {
                     mostrarStatus("¡Subido! Google está leyendo las 12 páginas. Espera 15 segundos...", "var(--success)", "white");
@@ -147,53 +151,57 @@
         }
 
         async function consultarYDescargar() {
-            // CORRECCIÓN: Se agregaron comillas a "var(--warning)"
-            mostrarStatus("Consultando disponibilidad...", "var(--warning)", "black");
+            try {
+                mostrarStatus("Consultando disponibilidad...", "var(--warning)", "black");
 
-            // 1. Preguntar a GAS si ya hay archivo
-            const resMetadata = await fetch(APPS_SCRIPT_URL, {
-                method: 'POST',
-                body: JSON.stringify({ accion: "consultar", fileName })
-            });
-            const meta = await resMetadata.json();
-
-            if (meta.status === "esperando") {
-                return alert("Aún no termina la lectura. Intenta en 5 segundos.");
-            }
-
-            if (meta.status === "listo_para_descarga_directa") {
-                // CORRECCIÓN: Se agregaron comillas a "var(--blue)"
-                mostrarStatus("Descargando datos pesados directamente a tu navegador (By-pass)...", "var(--blue)", "white");
-
-                // 2. Descargar el JSON pesado directamente desde GCS usando el token
-                const resGcs = await fetch(meta.url, {
-                    headers: { "Authorization": "Bearer " + meta.token }
-                });
-                const jsonVision = await resGcs.json();
-
-                // 3. Extraer solo el texto (ligero)
-                let textoCrudo = "";
-                if (jsonVision.responses) {
-                    jsonVision.responses.forEach(r => {
-                        if (r.fullTextAnnotation) textoCrudo += r.fullTextAnnotation.text + "\n";
-                    });
-                }
-
-                // CORRECCIÓN: Se agregaron comillas a "var(--blue)"
-                mostrarStatus("Enviando texto a Gemini para estructurar tabla...", "var(--blue)", "white");
-
-                // 4. Enviar solo el texto a GAS para Gemini
-                const resGemini = await fetch(APPS_SCRIPT_URL, {
+                // CORRECCIÓN 2: Agregamos el header text/plain
+                const resMetadata = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ accion: "estructurar", textoCrudo })
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ accion: "consultar", fileName })
                 });
-                const final = await resGemini.json();
+                const meta = await resMetadata.json();
 
-                if (final.status === "completado") {
-                    dibujarTabla(final.datos);
-                } else {
-                    alert("Error en Gemini: " + final.mensaje);
+                if (meta.status === "esperando") {
+                    return alert("Aún no termina la lectura. Intenta en 5 segundos.");
                 }
+
+                if (meta.status === "listo_para_descarga_directa") {
+                    mostrarStatus("Descargando datos pesados directamente a tu navegador (By-pass)...", "var(--blue)", "white");
+
+                    const resGcs = await fetch(meta.url, {
+                        headers: { "Authorization": "Bearer " + meta.token }
+                    });
+                    
+                    if (!resGcs.ok) throw new Error("Error al descargar desde el Bucket. Revisa la regla CORS.");
+                    const jsonVision = await resGcs.json();
+
+                    let textoCrudo = "";
+                    if (jsonVision.responses) {
+                        jsonVision.responses.forEach(r => {
+                            if (r.fullTextAnnotation) textoCrudo += r.fullTextAnnotation.text + "\n";
+                        });
+                    }
+
+                    mostrarStatus("Enviando texto a Gemini 2.5 para estructurar tabla...", "var(--blue)", "white");
+
+                    // CORRECCIÓN 3: Agregamos el header text/plain
+                    const resGemini = await fetch(APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({ accion: "estructurar", textoCrudo })
+                    });
+                    const final = await resGemini.json();
+
+                    if (final.status === "completado") {
+                        dibujarTabla(final.datos);
+                    } else {
+                        alert("Error en Gemini: " + final.mensaje);
+                    }
+                }
+            } catch (error) {
+                console.error(error);
+                mostrarStatus("¡Error!: " + error.message, "#dc3545", "white");
             }
         }
 
