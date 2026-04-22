@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor Industrial PDF</title>
+    <style>
+        :root {
+            --blue: #0b1c60;
+            --success: #28a745;
+            --warning: #ffc107;
+        }
+
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f0f2f5;
+            padding: 40px 20px;
+            margin: 0;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 900px;
+            width: 100%;
+            border-top: 5px solid var(--blue);
+        }
+
+        h2 {
+            color: var(--blue);
+        }
+
+        input[type="file"] {
+            margin-bottom: 20px;
+            border: 2px dashed #ccc;
+            padding: 15px;
+            width: 80%;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button {
+            background: var(--blue);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin: 5px;
+        }
+
+        button:disabled {
+            background: #ccc;
+        }
+
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 0.85rem;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background: var(--blue);
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card">
+        <h2>OCR Extractor Industrial</h2>
+        <input type="file" id="pdfInput" accept="application/pdf">
+        <div>
+            <button id="btnSubir" onclick="subirPDF()">1. Subir PDF</button>
+            <button id="btnConsultar" onclick="consultarYDescargar()"
+                style="background:var(--warning); color:black; display:none;">2. Ver Resultados</button>
+        </div>
+        <div id="status"></div>
+        <div id="res-div" style="display:none; text-align:left;">
+            <h3 id="h-maq"></h3>
+            <h4 id="h-for"></h4>
+            <table id="tabla-res">
+                <thead>
+                    <tr>
+                        <th>Función</th>
+                        <th>Texto</th>
+                        <th>Mín</th>
+                        <th>Valor</th>
+                        <th>Máx</th>
+                    </tr>
+                </thead>
+                <tbody id="body-res"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-G5jwAL4Q8yHvDDQvqjH1EH3b9KHkx14V16PB8L7qDRZUVbyWTpOctm4IQfNTPiRc/exec';
+        let fileName = "";
+
+        async function subirPDF() {
+            const input = document.getElementById('pdfInput');
+            if (input.files.length === 0) return alert("Selecciona un archivo");
+
+            fileName = input.files[0].name;
+            mostrarStatus("Subiendo archivo...", "#e9ecef", "#333");
+
+            const reader = new FileReader();
+            reader.readAsDataURL(input.files[0]);
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+                const res = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 })
+                });
+                const data = await res.json();
+                if (data.status === "procesando") {
+                    mostrarStatus("¡Subido! Google está leyendo las 12 páginas. Espera 15 segundos...", "var(--success)", "white");
+                    document.getElementById('btnConsultar').style.display = "inline-block";
+                }
+            };
+        }
+
+        async function consultarYDescargar() {
+            // CORRECCIÓN: Se agregaron comillas a "var(--warning)"
+            mostrarStatus("Consultando disponibilidad...", "var(--warning)", "black");
+
+            // 1. Preguntar a GAS si ya hay archivo
+            const resMetadata = await fetch(APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ accion: "consultar", fileName })
+            });
+            const meta = await resMetadata.json();
+
+            if (meta.status === "esperando") {
+                return alert("Aún no termina la lectura. Intenta en 5 segundos.");
+            }
+
+            if (meta.status === "listo_para_descarga_directa") {
+                // CORRECCIÓN: Se agregaron comillas a "var(--blue)"
+                mostrarStatus("Descargando datos pesados directamente a tu navegador (By-pass)...", "var(--blue)", "white");
+
+                // 2. Descargar el JSON pesado directamente desde GCS usando el token
+                const resGcs = await fetch(meta.url, {
+                    headers: { "Authorization": "Bearer " + meta.token }
+                });
+                const jsonVision = await resGcs.json();
+
+                // 3. Extraer solo el texto (ligero)
+                let textoCrudo = "";
+                if (jsonVision.responses) {
+                    jsonVision.responses.forEach(r => {
+                        if (r.fullTextAnnotation) textoCrudo += r.fullTextAnnotation.text + "\n";
+                    });
+                }
+
+                // CORRECCIÓN: Se agregaron comillas a "var(--blue)"
+                mostrarStatus("Enviando texto a Gemini para estructurar tabla...", "var(--blue)", "white");
+
+                // 4. Enviar solo el texto a GAS para Gemini
+                const resGemini = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ accion: "estructurar", textoCrudo })
+                });
+                const final = await resGemini.json();
+
+                if (final.status === "completado") {
+                    dibujarTabla(final.datos);
+                } else {
+                    alert("Error en Gemini: " + final.mensaje);
+                }
+            }
+        }
+
+        function dibujarTabla(d) {
+            document.getElementById('status').style.display = "none";
+            document.getElementById('res-div').style.display = "block";
+            document.getElementById('h-maq').innerText = "Máquina: " + d.maquina;
+            document.getElementById('h-for').innerText = "Formato: " + d.formato;
+            const body = document.getElementById('body-res');
+            body.innerHTML = "";
+            d.tabla.forEach(f => {
+                body.innerHTML += `<tr><td>${f.funcion}</td><td>${f.texto}</td><td>${f.min}</td><td><b>${f.valor}</b></td><td>${f.max}</td></tr>`;
+            });
+        }
+
+        function mostrarStatus(m, b, c) {
+            const s = document.getElementById('status');
+            s.style.display = "block"; s.style.background = b; s.style.color = c; s.innerHTML = m;
+        }
+    </script>
+</body>
+
+</html>
