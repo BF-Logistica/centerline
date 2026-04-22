@@ -120,8 +120,12 @@
     </div>
 
  <script>
-        // Asegúrate de que esta URL sea exactamente la de tu implementación actual
+        // 1. TU URL DE APPS SCRIPT (Para subir archivos y consultar si ya están)
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-G5jwAL4Q8yHvDDQvqjH1EH3b9KHkx14V16PB8L7qDRZUVbyWTpOctm4IQfNTPiRc/exec';
+        
+        // 2. TU LLAVE DE GEMINI DE POSPAGO (Para que el navegador hable directo con la IA)
+        const GEMINI_API_KEY = "AIzaSyAdMYHC-ZN5q57nLijTSqF0iOf4u-SK8Rs"; 
+
         let fileName = "";
 
         async function subirPDF() {
@@ -136,16 +140,15 @@
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 
-                // CORRECCIÓN 1: Quitamos headers y agregamos redirect: 'follow'
                 const res = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 }),
-                    redirect: 'follow'
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 })
                 });
                 
                 const data = await res.json();
                 if (data.status === "procesando") {
-                    mostrarStatus("¡Subido! Google está leyendo las hojas. Espera 15 segundos...", "var(--success)", "white");
+                    mostrarStatus("¡Subido! Google está escaneando las hojas. Espera 15 segundos...", "var(--success)", "white");
                     document.getElementById('btnConsultar').style.display = "inline-block";
                 }
             };
@@ -153,29 +156,29 @@
 
         async function consultarYDescargar() {
             try {
-                mostrarStatus("Consultando disponibilidad...", "var(--warning)", "black");
+                mostrarStatus("Consultando disponibilidad en la nube...", "var(--warning)", "black");
 
-                // CORRECCIÓN 2: Quitamos headers y agregamos redirect: 'follow'
+                // 1. Preguntamos a Apps Script si el OCR ya terminó
                 const resMetadata = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ accion: "consultar", fileName }),
-                    redirect: 'follow'
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ accion: "consultar", fileName })
                 });
                 const meta = await resMetadata.json();
 
                 if (meta.status === "esperando") {
-                    return alert("Aún no termina la lectura. Intenta en 5 segundos.");
+                    return alert("Aún no termina la lectura OCR. Intenta en unos segundos.");
                 }
 
                 if (meta.status === "listo_para_descarga_directa") {
-                    mostrarStatus("Descargando datos del reporte...", "var(--blue)", "white");
+                    mostrarStatus("Descargando texto gigante del Bucket...", "var(--blue)", "white");
 
-                    // Esta petición se queda igual porque va directa al Bucket (GCS), no a Apps Script
+                    // 2. Descargamos el archivo directamente del Bucket
                     const resGcs = await fetch(meta.url, {
                         headers: { "Authorization": "Bearer " + meta.token }
                     });
                     
-                    if (!resGcs.ok) throw new Error("Error al descargar desde el Bucket. Revisa la regla CORS.");
+                    if (!resGcs.ok) throw new Error("Error al descargar desde el Bucket.");
                     const jsonVision = await resGcs.json();
 
                     let textoCrudo = "";
@@ -185,21 +188,43 @@
                         });
                     }
 
-                    mostrarStatus("Enviando texto a Gemini 2.5 para estructurar tabla...", "var(--blue)", "white");
+                    mostrarStatus("Conectando directo con Gemini 2.5 Flash...", "var(--blue)", "white");
 
-                    // CORRECCIÓN 3: Quitamos headers y agregamos redirect: 'follow'
-                    const resGemini = await fetch(APPS_SCRIPT_URL, {
+                    // 3. COMUNICACIÓN DIRECTA CON GEMINI (FULL BY-PASS)
+                    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+                    
+                    const prompt = `Actúa como un experto en digitalización industrial.
+                    Extrae los datos del siguiente reporte de máquina IWK y devuélvelos en formato JSON.
+                    
+                    Instrucciones:
+                    1. 'maquina': Identifica el modelo y serie (ej. IWK FP 64-2 54421).
+                    2. 'formato': Identifica el nombre del formato (ej. E2 Aquaphor 50g splinter).
+                    3. 'tabla': Crea una lista con los campos: funcion, texto, min, valor, max.
+                    Nota: Si en el texto aparecen 'Ab' o 'Azl', cámbialos por 'min' y 'max'.
+                    
+                    Responde únicamente el objeto JSON puro.
+                    
+                    TEXTO EXTRAÍDO:
+                    ${textoCrudo}`;
+
+                    const resGemini = await fetch(geminiUrl, {
                         method: 'POST',
-                        body: JSON.stringify({ accion: "estructurar", textoCrudo }),
-                        redirect: 'follow'
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }]
+                        })
                     });
-                    const final = await resGemini.json();
 
-                    if (final.status === "completado") {
-                        dibujarTabla(final.datos);
-                    } else {
-                        alert("Error en Gemini: " + final.mensaje);
-                    }
+                    if (!resGemini.ok) throw new Error("La API de Gemini rechazó la conexión.");
+                    const geminiData = await resGemini.json();
+
+                    // Limpiamos y estructuramos la respuesta de la IA
+                    let cleanJson = geminiData.candidates[0].content.parts[0].text;
+                    cleanJson = cleanJson.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const datosEstructurados = JSON.parse(cleanJson);
+
+                    // 4. Dibujamos la tabla
+                    dibujarTabla(datosEstructurados);
                 }
             } catch (error) {
                 console.error("Error capturado:", error);
@@ -215,7 +240,7 @@
             const body = document.getElementById('body-res');
             body.innerHTML = "";
             d.tabla.forEach(f => {
-                body.innerHTML += `<tr><td>${f.funcion}</td><td>${f.texto}</td><td>${f.min}</td><td><b>${f.valor}</b></td><td>${f.max}</td></tr>`;
+                body.innerHTML += `<tr><td>${f.funcion || ''}</td><td>${f.texto || ''}</td><td>${f.min || ''}</td><td><b>${f.valor || ''}</b></td><td>${f.max || ''}</td></tr>`;
             });
         }
 
