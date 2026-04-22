@@ -120,12 +120,8 @@
     </div>
 
  <script>
-        // 1. TU URL DE APPS SCRIPT (Para subir archivos y consultar si ya están)
+        // SOLAMENTE la URL de Apps Script
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-G5jwAL4Q8yHvDDQvqjH1EH3b9KHkx14V16PB8L7qDRZUVbyWTpOctm4IQfNTPiRc/exec';
-        
-        // 2. TU LLAVE DE GEMINI DE POSPAGO (Para que el navegador hable directo con la IA)
-        const GEMINI_API_KEY = "AIzaSyAdMYHC-ZN5q57nLijTSqF0iOf4u-SK8Rs"; 
-
         let fileName = "";
 
         async function subirPDF() {
@@ -143,19 +139,21 @@
                 const res = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
                     headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 })
+                    body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 }),
+                    redirect: 'follow'
                 });
                 
                 const data = await res.json();
                 if (data.status === "procesando") {
-                    mostrarStatus("¡Subido! Google está escaneando las hojas. Espera 15 segundos...", "var(--success)", "white");
+                    mostrarStatus("¡Subido! Google está leyendo las hojas. Espera 15 segundos...", "var(--success)", "white");
                     document.getElementById('btnConsultar').style.display = "inline-block";
                 }
             };
         }
 
-    async function consultarYDescargar() {
+        async function consultarYDescargar() {
             try {
+                // Ahora Apps Script hace todo el trabajo pesado de forma invisible
                 mostrarStatus("Procesando documento en la nube (Esto puede tomar 15 a 30 segundos)...", "var(--warning)", "black");
 
                 const res = await fetch(APPS_SCRIPT_URL, {
@@ -173,7 +171,7 @@
                     mostrarStatus("¡Extracción exitosa!", "var(--success)", "white");
                     dibujarTabla(meta.datos);
                 } else {
-                    throw new Error(meta.mensaje || "Error desconocido");
+                    throw new Error(meta.mensaje || "Error desconocido en el servidor.");
                 }
             } catch (error) {
                 console.error("Error capturado:", error);
