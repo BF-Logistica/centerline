@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extractor Industrial PDF</title>
+    <title>Extractor Industrial PDF a Excel</title>
     <style>
         :root {
             --blue: #0b1c60;
@@ -28,7 +28,7 @@
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             text-align: center;
-            max-width: 900px;
+            max-width: 700px;
             width: 100%;
             border-top: 5px solid var(--blue);
         }
@@ -56,36 +56,41 @@
             font-weight: bold;
             text-transform: uppercase;
             margin: 5px;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            opacity: 0.9;
         }
 
         button:disabled {
             background: #ccc;
+            cursor: not-allowed;
         }
 
         #status {
             margin-top: 20px;
-            padding: 15px;
+            padding: 20px;
             border-radius: 8px;
             display: none;
+            font-size: 1.1rem;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            font-size: 0.85rem;
+        .btn-excel {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 12px 25px;
+            background: var(--success);
+            color: white !important;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
-
-        th,
-        td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-
-        th {
-            background: var(--blue);
-            color: white;
+        
+        .btn-excel:hover {
+            background: #218838;
         }
     </style>
 </head>
@@ -93,68 +98,62 @@
 <body>
 
     <div class="card">
-        <h2>OCR Extractor Industrial</h2>
+        <h2>OCR Extractor a Google Sheets</h2>
         <input type="file" id="pdfInput" accept="application/pdf">
         <div>
             <button id="btnSubir" onclick="subirPDF()">1. Subir PDF</button>
             <button id="btnConsultar" onclick="consultarYDescargar()"
-                style="background:var(--warning); color:black; display:none;">2. Ver Resultados</button>
+                style="background:var(--warning); color:black; display:none;">2. Enviar a Excel</button>
         </div>
         <div id="status"></div>
-        <div id="res-div" style="display:none; text-align:left;">
-            <h3 id="h-maq"></h3>
-            <h4 id="h-for"></h4>
-            <table id="tabla-res">
-                <thead>
-                    <tr>
-                        <th>Función</th>
-                        <th>Texto</th>
-                        <th>Mín</th>
-                        <th>Valor</th>
-                        <th>Máx</th>
-                    </tr>
-                </thead>
-                <tbody id="body-res"></tbody>
-            </table>
-        </div>
     </div>
 
- <script>
-        // SOLAMENTE la URL de Apps Script
+    <script>
+        // La URL de tu Apps Script actual
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-G5jwAL4Q8yHvDDQvqjH1EH3b9KHkx14V16PB8L7qDRZUVbyWTpOctm4IQfNTPiRc/exec';
         let fileName = "";
 
         async function subirPDF() {
             const input = document.getElementById('pdfInput');
-            if (input.files.length === 0) return alert("Selecciona un archivo");
+            if (input.files.length === 0) return alert("Por favor, selecciona un archivo PDF.");
 
             fileName = input.files[0].name;
-            mostrarStatus("Subiendo archivo...", "#e9ecef", "#333");
+            mostrarStatus("Subiendo archivo a la nube de Google...", "#e9ecef", "#333");
+            document.getElementById('btnSubir').disabled = true;
 
             const reader = new FileReader();
             reader.readAsDataURL(input.files[0]);
             reader.onload = async () => {
                 const base64 = reader.result.split(',')[1];
                 
-                const res = await fetch(APPS_SCRIPT_URL, {
-                    method: 'POST',
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 }),
-                    redirect: 'follow'
-                });
-                
-                const data = await res.json();
-                if (data.status === "procesando") {
-                    mostrarStatus("¡Subido! Google está leyendo las hojas. Espera 15 segundos...", "var(--success)", "white");
-                    document.getElementById('btnConsultar').style.display = "inline-block";
+                try {
+                    const res = await fetch(APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({ accion: "subir", fileName, pdfBase64: base64 }),
+                        redirect: 'follow'
+                    });
+                    
+                    const data = await res.json();
+                    if (data.status === "procesando") {
+                        mostrarStatus("¡Subido! Google Vision está escaneando las hojas. Espera 15 segundos...", "var(--success)", "white");
+                        document.getElementById('btnConsultar').style.display = "inline-block";
+                        document.getElementById('btnSubir').style.display = "none";
+                    }
+                } catch (error) {
+                    mostrarStatus("Error de conexión al subir: " + error.message, "#dc3545", "white");
+                    document.getElementById('btnSubir').disabled = false;
                 }
             };
         }
 
         async function consultarYDescargar() {
             try {
-                // Ahora Apps Script hace todo el trabajo pesado de forma invisible
-                mostrarStatus("Procesando documento en la nube (Esto puede tomar 15 a 30 segundos)...", "var(--warning)", "black");
+                // Deshabilitar botón para evitar dobles clics
+                document.getElementById('btnConsultar').disabled = true;
+                document.getElementById('btnConsultar').innerText = "Procesando...";
+                
+                mostrarStatus("Procesando datos con IA y guardando en Excel (Esto toma entre 10 y 20 segundos)...", "var(--warning)", "black");
 
                 const res = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -166,34 +165,42 @@
                 const meta = await res.json();
 
                 if (meta.status === "esperando") {
+                    document.getElementById('btnConsultar').disabled = false;
+                    document.getElementById('btnConsultar').innerText = "2. Enviar a Excel";
                     return alert("Google sigue escaneando el documento. Intenta de nuevo en 10 segundos.");
                 } else if (meta.status === "completado") {
-                    mostrarStatus("¡Extracción exitosa!", "var(--success)", "white");
-                    dibujarTabla(meta.datos);
+                    
+                    // Diseño del mensaje de éxito con el botón al Excel
+                    const mensajeExito = `
+                        <div style="font-size: 1.2rem; margin-bottom: 10px;">✅ <strong>¡Extracción Exitosa!</strong></div>
+                        <div>${meta.mensaje}</div>
+                        <a href="${meta.link}" target="_blank" class="btn-excel">
+                            Abrir Reporte en Google Sheets
+                        </a>
+                    `;
+                    
+                    mostrarStatus(mensajeExito, "#f8f9fa", "#333");
+                    document.getElementById('status').style.border = "2px solid var(--success)";
+                    document.getElementById('btnConsultar').style.display = "none"; // Ocultamos el botón al terminar
+                    
                 } else {
                     throw new Error(meta.mensaje || "Error desconocido en el servidor.");
                 }
             } catch (error) {
                 console.error("Error capturado:", error);
                 mostrarStatus("¡Error!: " + error.message, "#dc3545", "white");
+                document.getElementById('btnConsultar').disabled = false;
+                document.getElementById('btnConsultar').innerText = "2. Enviar a Excel";
             }
-        }
-
-        function dibujarTabla(d) {
-            document.getElementById('status').style.display = "none";
-            document.getElementById('res-div').style.display = "block";
-            document.getElementById('h-maq').innerText = "Máquina: " + d.maquina;
-            document.getElementById('h-for').innerText = "Formato: " + d.formato;
-            const body = document.getElementById('body-res');
-            body.innerHTML = "";
-            d.tabla.forEach(f => {
-                body.innerHTML += `<tr><td>${f.funcion || ''}</td><td>${f.texto || ''}</td><td>${f.min || ''}</td><td><b>${f.valor || ''}</b></td><td>${f.max || ''}</td></tr>`;
-            });
         }
 
         function mostrarStatus(m, b, c) {
             const s = document.getElementById('status');
-            s.style.display = "block"; s.style.background = b; s.style.color = c; s.innerHTML = m;
+            s.style.display = "block"; 
+            s.style.background = b; 
+            s.style.color = c; 
+            s.style.border = "none"; // Resetea el borde por defecto
+            s.innerHTML = m;
         }
     </script>
 </body>
