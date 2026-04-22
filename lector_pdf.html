@@ -154,77 +154,26 @@
             };
         }
 
-        async function consultarYDescargar() {
+    async function consultarYDescargar() {
             try {
-                mostrarStatus("Consultando disponibilidad en la nube...", "var(--warning)", "black");
+                mostrarStatus("Procesando documento en la nube (Esto puede tomar 15 a 30 segundos)...", "var(--warning)", "black");
 
-                // 1. Preguntamos a Apps Script si el OCR ya terminó
-                const resMetadata = await fetch(APPS_SCRIPT_URL, {
+                const res = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
                     headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({ accion: "consultar", fileName })
+                    body: JSON.stringify({ accion: "consultar", fileName }),
+                    redirect: 'follow'
                 });
-                const meta = await resMetadata.json();
+                
+                const meta = await res.json();
 
                 if (meta.status === "esperando") {
-                    return alert("Aún no termina la lectura OCR. Intenta en unos segundos.");
-                }
-
-                if (meta.status === "listo_para_descarga_directa") {
-                    mostrarStatus("Descargando texto gigante del Bucket...", "var(--blue)", "white");
-
-                    // 2. Descargamos el archivo directamente del Bucket
-                    const resGcs = await fetch(meta.url, {
-                        headers: { "Authorization": "Bearer " + meta.token }
-                    });
-                    
-                    if (!resGcs.ok) throw new Error("Error al descargar desde el Bucket.");
-                    const jsonVision = await resGcs.json();
-
-                    let textoCrudo = "";
-                    if (jsonVision.responses) {
-                        jsonVision.responses.forEach(r => {
-                            if (r.fullTextAnnotation) textoCrudo += r.fullTextAnnotation.text + "\n";
-                        });
-                    }
-
-                    mostrarStatus("Conectando directo con Gemini 2.5 Flash...", "var(--blue)", "white");
-
-                    // 3. COMUNICACIÓN DIRECTA CON GEMINI (FULL BY-PASS)
-                    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-                    
-                    const prompt = `Actúa como un experto en digitalización industrial.
-                    Extrae los datos del siguiente reporte de máquina IWK y devuélvelos en formato JSON.
-                    
-                    Instrucciones:
-                    1. 'maquina': Identifica el modelo y serie (ej. IWK FP 64-2 54421).
-                    2. 'formato': Identifica el nombre del formato (ej. E2 Aquaphor 50g splinter).
-                    3. 'tabla': Crea una lista con los campos: funcion, texto, min, valor, max.
-                    Nota: Si en el texto aparecen 'Ab' o 'Azl', cámbialos por 'min' y 'max'.
-                    
-                    Responde únicamente el objeto JSON puro.
-                    
-                    TEXTO EXTRAÍDO:
-                    ${textoCrudo}`;
-
-                    const resGemini = await fetch(geminiUrl, {
-                        method: 'POST',
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }]
-                        })
-                    });
-
-                    if (!resGemini.ok) throw new Error("La API de Gemini rechazó la conexión.");
-                    const geminiData = await resGemini.json();
-
-                    // Limpiamos y estructuramos la respuesta de la IA
-                    let cleanJson = geminiData.candidates[0].content.parts[0].text;
-                    cleanJson = cleanJson.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const datosEstructurados = JSON.parse(cleanJson);
-
-                    // 4. Dibujamos la tabla
-                    dibujarTabla(datosEstructurados);
+                    return alert("Google sigue escaneando el documento. Intenta de nuevo en 10 segundos.");
+                } else if (meta.status === "completado") {
+                    mostrarStatus("¡Extracción exitosa!", "var(--success)", "white");
+                    dibujarTabla(meta.datos);
+                } else {
+                    throw new Error(meta.mensaje || "Error desconocido");
                 }
             } catch (error) {
                 console.error("Error capturado:", error);
