@@ -64,7 +64,8 @@
         }
 
         button:disabled {
-            background: #ccc;
+            background: #ccc !important;
+            color: #666 !important;
             cursor: not-allowed;
         }
 
@@ -135,10 +136,25 @@
                     });
                     
                     const data = await res.json();
+                    
                     if (data.status === "procesando") {
-                        mostrarStatus("¡Subido! Google Vision está escaneando las hojas. Espera 15 segundos...", "var(--success)", "white");
-                        document.getElementById('btnConsultar').style.display = "inline-block";
+                        mostrarStatus("¡Subido! Document AI está escaneando las hojas. Espera 15 segundos...", "var(--success)", "white");
+                        
+                        // Ocultamos el botón de subir
                         document.getElementById('btnSubir').style.display = "none";
+                        
+                        // Mostramos el botón de consultar, pero deshabilitado
+                        const btnConsultar = document.getElementById('btnConsultar');
+                        btnConsultar.style.display = "inline-block";
+                        btnConsultar.disabled = true;
+                        btnConsultar.innerText = "Procesando... Espere";
+
+                        // Activamos el temporizador de 15 segundos (15000 ms)
+                        setTimeout(() => {
+                            btnConsultar.disabled = false;
+                            btnConsultar.innerText = "2. Enviar a Excel";
+                            mostrarStatus("¡Análisis previo terminado! Ahora haz clic en 'Enviar a Excel'.", "var(--blue)", "white");
+                        }, 15000);
                     }
                 } catch (error) {
                     mostrarStatus("Error de conexión al subir: " + error.message, "#dc3545", "white");
@@ -151,9 +167,9 @@
             try {
                 // Deshabilitar botón para evitar dobles clics
                 document.getElementById('btnConsultar').disabled = true;
-                document.getElementById('btnConsultar').innerText = "Procesando...";
+                document.getElementById('btnConsultar').innerText = "Guardando...";
                 
-                mostrarStatus("Procesando datos con IA y guardando en Excel (Esto toma entre 10 y 20 segundos)...", "var(--warning)", "black");
+                mostrarStatus("Procesando datos con IA y escribiendo en Excel...", "var(--warning)", "black");
 
                 const res = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -189,11 +205,11 @@
             } catch (error) {
                 console.error("Error capturado:", error);
                 
-                // Si el error es el bloqueo del cortafuegos de BMM
+                // Si el error es el bloqueo del cortafuegos
                 if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
                     const mensajeFondo = `
                         <div style="font-size: 1.1rem; margin-bottom: 10px;">⏳ <strong>Proceso en Segundo Plano</strong></div>
-                        <div>La red de la empresa pausó la pantalla, ¡pero <b>Google sigue procesando el archivo en la nube!</b></div>
+                        <div>La red pausó la pantalla, ¡pero <b>Google sigue procesando el archivo en la nube!</b></div>
                         <div style="margin-top: 10px; font-weight: normal;">Espera 1 o 2 minutos y revisa directamente tu Excel.</div>
                         <a href="https://docs.google.com/spreadsheets/d/1QhQO5j6U7ECFUWUWR4VGUi0wIp6Gpgh1gilTgfWvGBU/edit" target="_blank" class="btn-excel">
                             Abrir Google Sheets
@@ -208,7 +224,7 @@
                     document.getElementById('btnConsultar').innerText = "2. Enviar a Excel";
                 }
             }
-        } // <--- ESTA ES LA LLAVE QUE FALTABA
+        } 
 
         function mostrarStatus(m, b, c) {
             const s = document.getElementById('status');
